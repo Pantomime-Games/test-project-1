@@ -1,7 +1,14 @@
 import { randomBytes } from 'crypto'
 import { createWorker } from 'mediasoup'
 import { Worker, RtpCodecCapability } from 'mediasoup/lib/types'
-import { IPartyManager, IParty, IPartyConnection } from 'party'
+import {
+  IPartyManager,
+  IParty,
+  IPartyConnection,
+  ICreatePartyOptions,
+  IJoinPartyOptions,
+} from 'party'
+import { PartyNotFoundError } from './errors'
 
 let worker: Worker
 let parties: { [id: string]: IParty } = {}
@@ -18,10 +25,11 @@ export async function initPartyManager(): Promise<IPartyManager> {
   return {
     createParty,
     joinParty,
+    getPartyById,
   }
 }
 
-async function createParty(): Promise<IParty> {
+async function createParty({ host }: ICreatePartyOptions): Promise<IParty> {
   // init the mediasoup router
   const router = await worker.createRouter({
     mediaCodecs: getMediaCodecs(),
@@ -32,18 +40,28 @@ async function createParty(): Promise<IParty> {
 
   // add the party to the internal hash
   parties[id] = {
+    hostId: host.id,
     id,
     router,
+    members: [],
   }
 
   return parties[id]
 }
 
-async function joinParty(partyId: string): Promise<IPartyConnection> {
-  const { router } = parties[partyId]
+async function joinParty({
+  partyId,
+  userId,
+}: IJoinPartyOptions): Promise<IPartyConnection> {
+  console.log('partyId', partyId)
+  const party = parties[partyId]
+
+  if (!party) {
+    throw new PartyNotFoundError()
+  }
 
   // create transports for audio and video
-  const transport = await router.createWebRtcTransport({
+  const transport = await party.router.createWebRtcTransport({
     listenIps: [
       {
         ip: '127.0.0.1',
@@ -53,16 +71,29 @@ async function joinParty(partyId: string): Promise<IPartyConnection> {
     enableTcp: true,
     preferUdp: true,
     appData: {
-      // user info?
+      userId,
       partyId,
     },
   })
+
+  // add member to party
+  party.members.push({ userId: userId })
+
+  console.log(
+    `New member joined party ${party.id}. Current members:`,
+    party.members
+  )
 
   return {
     partyId,
     audioSendTransport: transport,
     videoSendTransport: transport,
   }
+}
+
+// async to start with in case this becomes async later
+async function getPartyById(partyId: string) {
+  return parties[partyId]
 }
 
 function getMediaCodecs(): RtpCodecCapability[] {

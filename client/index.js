@@ -17,22 +17,40 @@ async function main() {
   const socket = io()
   socket.emit('mymessage', { foo: 'bar' })
 
-  // create the party
-  const party = await createParty()
-  console.log('party:', party)
+  // create the party if there is no party id in the query string
+  const urlParams = new URLSearchParams(window.location.search)
+  let partyId = urlParams.get('partyId')
+  let party
+  if (partyId) {
+    party = await getParty(partyId)
+  } else {
+    party = await createParty()
+    partyId = party.id
+  }
+  console.log('partyId', partyId)
 
   // join the party
-  const partyConnection = await joinParty(party.id)
+  const partyConnection = await joinParty(partyId)
   console.log('partyConnection', partyConnection)
 
   // set up the device
-  // const device = await getDevice({
-  //   routerRtpCapabilities: party.rtpCapabilities,
-  //   partyConnection,
-  // })
+  const device = await getDevice({
+    routerRtpCapabilities: party.rtpCapabilities,
+    partyConnection,
+  })
 
   // initialize game
-  initGame()
+  // initGame()
+}
+
+async function getParty(partyId) {
+  const party = await fetch(`/parties/${partyId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+  return await party.json()
 }
 
 async function createParty() {

@@ -8,10 +8,24 @@ export interface IPartyConnection {
 
 export interface IParty {
   id: string
+  hostId: string
   router: Router
+  members: {
+    userId: string
+  }[]
+}
+
+export interface ICreatePartyOptions {
+  host: { id: string }
+}
+
+export interface IJoinPartyOptions {
+  partyId: string
+  userId: string
 }
 
 export interface IPartyManager {
-  createParty: () => Promise<IParty>
-  joinParty: (id: string) => Promise<IPartyConnection>
+  createParty: (createOptions: ICreatePartyOptions) => Promise<IParty>
+  joinParty: (joinOptions: IJoinPartyOptions) => Promise<IPartyConnection>
+  getPartyById: (partyId: string) => Promise<IParty>
 }
