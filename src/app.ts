@@ -1,30 +1,28 @@
 import { resolve } from 'path'
 import { createServer } from 'http'
-import express from 'express'
-import session from 'express-session'
+import Express from 'express'
+import Session from 'express-session'
 import bodyParser from 'body-parser'
 import asyncHandler from 'express-async-handler'
 import { initPartyManager } from './party-manager'
-import { IParty, IPartyConnection } from 'party'
-import { WebRtcTransport } from 'mediasoup/lib/types'
 import { initSocketServer } from './socket-server'
 import { PartyNotFoundError } from './errors'
+import { partyToJson, partyConnectionToJson } from './to-json'
 
 export async function initApp() {
   const partyMgr = await initPartyManager()
 
-  const app = express()
+  const app = Express()
+  const session = Session({
+    secret: 'pantomime cunnilingus',
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false },
+  })
   app.disable('X-Powered-By')
   app.use(bodyParser())
 
-  app.use(
-    session({
-      secret: 'pantomime cunnilingus',
-      resave: false,
-      saveUninitialized: true,
-      cookie: { secure: false },
-    })
-  )
+  app.use(session)
 
   // Get party
   app.get(
@@ -66,7 +64,7 @@ export async function initApp() {
     })
   )
 
-  app.use(express.static(resolve(__dirname, '../client/')))
+  app.use(Express.static(resolve(__dirname, '../client/')))
 
   app.use((err, req, res, next) => {
     if (err instanceof PartyNotFoundError) {
@@ -77,33 +75,7 @@ export async function initApp() {
 
   // initialize socket server
   const server = createServer(app)
-  initSocketServer(server, partyMgr)
+  const io = initSocketServer(server, session, partyMgr)
 
   return server
-}
-
-function partyToJson(party: IParty) {
-  return {
-    id: party.id,
-    rtpCapabilities: party.router.rtpCapabilities,
-  }
-}
-
-function partyConnectionToJson(connection: IPartyConnection) {
-  const { audioSendTransport, videoSendTransport } = connection
-  return {
-    audioSendTransport: transportToJson(audioSendTransport),
-    videoSendTransport: transportToJson(videoSendTransport),
-  }
-}
-
-function transportToJson(transport: WebRtcTransport) {
-  const {
-    id,
-    iceParameters,
-    iceCandidates,
-    dtlsParameters,
-    sctpParameters,
-  } = transport
-  return { id, iceParameters, iceCandidates, dtlsParameters, sctpParameters }
 }

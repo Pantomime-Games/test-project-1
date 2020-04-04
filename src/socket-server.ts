@@ -1,11 +1,24 @@
 import { Server } from 'http'
-import socketio from 'socket.io'
+import socketio, { Socket } from 'socket.io'
 import { IPartyManager } from 'party'
+import sharedsession from 'express-socket.io-session'
+import { RequestHandler } from 'express'
 
-export function initSocketServer(app: Server, partyMgr: IPartyManager) {
+type AuthSocket = Socket & {
+  handshake: {
+    session: RequestHandler & { id: string }
+  }
+}
+
+export function initSocketServer(
+  app: Server,
+  session,
+  partyMgr: IPartyManager
+) {
   const io = socketio(app)
-  io.on('connection', socket => {
-    console.log('a user connected')
+  io.on('connection', (socket: AuthSocket) => {
+    const userId = socket.handshake.session.id
+    partyMgr.addUserSocket(userId, socket)
 
     socket.on('mymessage', msg => {
       console.log(typeof msg)
@@ -14,6 +27,17 @@ export function initSocketServer(app: Server, partyMgr: IPartyManager) {
 
     socket.on('disconnect', () => {
       console.log('user disconnected')
+      // leave rooms
+      // partyMgr.removeUser(userId)
     })
   })
+
+  // share session with express-session
+  io.use(
+    sharedsession(session, {
+      autoSave: true,
+    })
+  )
+
+  return io
 }

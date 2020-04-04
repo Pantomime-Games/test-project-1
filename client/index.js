@@ -10,13 +10,6 @@ main().catch(e => {
 })
 
 async function main() {
-  // const device = getDevice()
-
-  // const routerRtpCapabilities = await getRouterRtpCapabilities()
-  // await device.load({ routerRtpCapabilities })
-  const socket = io()
-  socket.emit('mymessage', { foo: 'bar' })
-
   // create the party if there is no party id in the query string
   const urlParams = new URLSearchParams(window.location.search)
   let partyId = urlParams.get('partyId')
@@ -37,6 +30,12 @@ async function main() {
   const device = await getDevice({
     routerRtpCapabilities: party.rtpCapabilities,
     partyConnection,
+  })
+
+  const socket = io()
+  socket.on('update', update => {
+    console.log('update', update)
+    handleSubscriptionUpdate(update, device)
   })
 
   // initialize game
@@ -115,4 +114,13 @@ async function getDevice({ routerRtpCapabilities, partyConnection }) {
       console.error(error)
     }
   }
+}
+
+/**
+ *
+ * @param {*} update
+ * @param {mediasoupClient.Device} device
+ */
+function handleSubscriptionUpdate(update, device) {
+  console.log(update)
 }

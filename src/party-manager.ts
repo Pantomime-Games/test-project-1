@@ -1,6 +1,10 @@
 import { randomBytes } from 'crypto'
 import { createWorker } from 'mediasoup'
-import { Worker, RtpCodecCapability } from 'mediasoup/lib/types'
+import {
+  Worker,
+  RtpCodecCapability,
+  WebRtcTransport,
+} from 'mediasoup/lib/types'
 import {
   IPartyManager,
   IParty,
@@ -9,9 +13,18 @@ import {
   IJoinPartyOptions,
 } from 'party'
 import { PartyNotFoundError } from './errors'
+import { Socket } from 'socket.io'
+import { transportToJson } from './to-json'
+
+type IUserSockets = { [userId: string]: Socket }
+type IUserTransports = {
+  [userId: string]: { video: WebRtcTransport; audio: WebRtcTransport }
+}
 
 let worker: Worker
 let parties: { [id: string]: IParty } = {}
+let userSockets: IUserSockets = {}
+let userTransports: IUserTransports = {}
 
 function newPartyId(): string {
   return randomBytes(16).toString('hex')
@@ -26,6 +39,7 @@ export async function initPartyManager(): Promise<IPartyManager> {
     createParty,
     joinParty,
     getPartyById,
+    addUserSocket,
   }
 }
 
@@ -38,12 +52,19 @@ async function createParty({ host }: ICreatePartyOptions): Promise<IParty> {
   // create a unique party id
   const id = newPartyId()
 
+  // kick off updates to that party
+  const cancelUpdates = startPartyUpdates(id)
+
   // add the party to the internal hash
   parties[id] = {
     hostId: host.id,
     id,
     router,
     members: [],
+    destroy: () => {
+      delete parties[id]
+      cancelUpdates()
+    },
   }
 
   return parties[id]
@@ -76,6 +97,12 @@ async function joinParty({
     },
   })
 
+  // register transport to user
+  userTransports[userId] = {
+    audio: transport,
+    video: transport,
+  }
+
   // add member to party
   party.members.push({ userId: userId })
 
@@ -94,6 +121,51 @@ async function joinParty({
 // async to start with in case this becomes async later
 async function getPartyById(partyId: string) {
   return parties[partyId]
+}
+
+async function addUserSocket(userId: string, socket: Socket) {
+  userSockets[userId] = socket
+}
+
+function startPartyUpdates(partyId: string) {
+  const intervalId = setInterval(() => {
+    const party = parties[partyId]
+    if (!party) {
+      clearInterval(intervalId)
+      return
+    }
+
+    // send messages to clients
+    sendUpdates(party)
+  }, 1000)
+
+  // return the cancellation function
+  return () => {
+    clearInterval(intervalId)
+  }
+}
+
+function sendUpdates(party: IParty) {
+  party.members.forEach(member => {
+    userSockets[member.userId].emit('update', {
+      video: party.members
+        .filter(m => {
+          if (m.userId === member.userId) {
+            return false
+          }
+          // in the future: algo for detecting who should be subscribed to
+
+          return true
+        })
+        .map(m => {
+          const { audio, video } = userTransports[m.userId]
+          return {
+            audio: transportToJson(audio),
+            video: transportToJson(video),
+          }
+        }),
+    })
+  })
 }
 
 function getMediaCodecs(): RtpCodecCapability[] {
